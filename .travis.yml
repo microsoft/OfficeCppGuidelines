@@ -1,0 +1,22 @@
+# This is the configuration for Travis CI, a free github-integrated service that runs this script for each pull request (if configured)
+
+# provides gcc, clang, make, scons, cmake
+language: c++
+
+# alternatives: gcc, clang, or both (as yaml list)
+compiler: clang
+
+addons:
+  apt:
+    packages:
+    - hunspell
+
+install:
+ -
+
+script:
+ - cd scripts; make -k
+ - cd ..
+
+notifications:
+  email: false
