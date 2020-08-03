@@ -1199,7 +1199,7 @@ By default use
 ##### Note
 
 If no well-designed, well-documented, and well-supported library exists for an important domain,
-maybe you should design and implement it, and then use it.
+maybe you should design and implement it, open-source it, and then use it.
 
 
 # <a name="S-interfaces"></a>I: Interfaces
@@ -1314,7 +1314,11 @@ Note that it is possible to get undefined initialization order even for `const` 
 
 ##### Exception
 
-A global object is often better than a singleton.
+~~A global object is often better than a singleton.~~
+
+##### Office.All
+
+Office rejects the exception above and does not follow it's guidence.
 
 ##### Note
 
@@ -1353,6 +1357,10 @@ The rule is "avoid", not "don't use." Of course there will be (rare) exceptions,
 ##### Reason
 
 Singletons are basically complicated global objects in disguise.
+
+##### Office.All
+
+Follow "pay-for-play" model and initialize singleton objects on first use. Use ILiblet to safely clean up singletons.
 
 ##### Example
 
@@ -1578,6 +1586,17 @@ We don't need to mention it for each member function.
 
 To make it clear that the condition is a precondition and to enable tool use.
 
+##### Office.All
+
+In Office, use `VerifyElseCrash()` instead of `Expects()`. Although both will crash the application, VEC has several improvements such as telemetry integration, recording last error, etc. Also prefer avoiding compound checks in a VEC (and any Assert-like construct). It leads to ambiguity as to which element failed when receiving telemetry.
+
+##### Office.All Example
+
+    VerifyElseCrash(height > 0 && width > 0);   // Avoid, ambiguous.
+
+    VerifyElseCrash(height > 0);                // Good. unambiguous.
+    VerifyElseCrash(width > 0);                 // Good, unambiguous.
+
 ##### Example
 
     int area(int height, int width)
@@ -1712,6 +1731,10 @@ checkers) exist for many toolchains.
 
 To make it clear that the condition is a postcondition and to enable tool use.
 
+##### Office.All
+
+In Office, use VerifyElseCrash instead of Ensures. Although both will crash the application, VEC has several improvements such as telemetry integration, recording last error, etc.
+
 ##### Example
 
     void f()
@@ -1773,6 +1796,10 @@ Concepts are supported in GCC 6.1 and later.
 
 It should not be possible to ignore an error because that could leave the system or a computation in an undefined (or unexpected) state.
 This is a major source of errors.
+
+##### Office.All
+
+Exceptions are not encouraged in Office shared code.
 
 ##### Example
 
@@ -1895,12 +1922,21 @@ so the default is "no ownership transfer."
 * (Simple) Warn on failure to either `reset` or explicitly `delete` an `owner` pointer on every code path.
 * (Simple) Warn if the return value of `new` or a function call with an `owner` return value is assigned to a raw pointer or non-`owner` reference.
 
-### <a name="Ri-nullptr"></a>I.12: Declare a pointer that must not be null as `not_null`
+### <a name="Ri-nullptr"></a>I.12: ~~Declare a pointer that must not be null as `not_null`~~
 
 ##### Reason
 
 To help avoid dereferencing `nullptr` errors.
 To improve performance by avoiding redundant checks for `nullptr`.
+
+##### Office.All
+
+Generally, non-optional parameters should be references (see [F.23](#Rf-nullptr)). There are some performance concerns with not_null
+
+There are two interesting cases where pointers are still used:
+* C-style buffers are passed by pointer (const char*, const uint8_t*)
+* Passing ownership information, e.g. std::unique_ptr<Cat>&&
+For these cases, there are some performance concerns with not_null, prefers usage of OACR ( _In_opt_ ) notations and use VerifyElseCrash to perform validation on these parameters.
 
 ##### Example
 
@@ -2094,6 +2130,10 @@ There are functions that are best expressed with four individual parameters, but
 **Alternative**: Use better abstraction: Group arguments into meaningful objects and pass the objects (by value or by reference).
 
 **Alternative**: Use default arguments or overloads to allow the most common forms of calls to be done with fewer arguments.
+
+##### Office.All adendum to alternative above:
+
+See F.51 for note on Office.All not allowing 'default args'
 
 ##### Enforcement
 
@@ -2807,6 +2847,16 @@ Not possible.
 Readability.
 Suppression of unused parameter warnings.
 
+##### Office.All
+
+In declarations, they should still be given names, since the name is part of the documentation of the parameter. In definitions, if not used, 
+then /**/ around the name is preferred. 
+If the param is wholly unused everywhere, it should just be removed, unless binary compatibility requires it to remain, at which point the name should be "unused".
+
+##### Example for Office.All
+
+  i.e. X* find(map<Blob>& m, const string& s, Hint /*hintValue*/ ); 
+
 ##### Example
 
     X* find(map<Blob>& m, const string& s, Hint);   // once upon a time, a hint was used
@@ -2844,6 +2894,70 @@ Use the advanced techniques only after demonstrating need, and document that nee
 
 For passing sequences of characters see [String](#SS-string).
 
+##### Office.All
+
+The Core Guidelines are sound where pure C++ contracts are used. Office augments these parameter passing guidelines slightly to state that out params should be avoided whenever possible, but if they must be used:
+
+Office.All Out Parameter Clarifications | Reason | Notes
+-- | -- | --
+For [POD](https://docs.microsoft.com/en-us/cpp/cpp/trivial-standard-layout-and-pod-types?view=vs-2019) types, prefer to separate in-out parameters into separate input values and output. | The function return value is best suited for returned information.<p>In parameters can be `const` correct. | Even when the return value is unavailable, output parameters allow a clear separation between what a function consumes as input and what a function produces as output.<p>See the clarifying Office.All examples in [F.17: For "in-out" parameters, pass by reference to non-`const`](#Rf-inout).
+For [POD](https://docs.microsoft.com/en-us/cpp/cpp/trivial-standard-layout-and-pod-types?view=vs-2019) types, if out params have to be used, always immediately zero or initialize their values on function entry. | Security, repeatability and convention. | Uninitialized data leads to security violations and unpredictable, rare, and hard to reproduce bugs.
+If out params have to be used, prefer to order them last in the parameter list. | Convention and consistency with existing API contracts. Clarity of intent. | An output parameter in the middle of a parameter list is easily overlooked.
+
+    // For returning POD types
+    MYSTRUCT ProduceStruct();                           // Best, when return value is available.
+    bool TryProduceStruct(_Out_ MYSTRUCT& someData);    // Ok, when not optional.
+    bool DoStructRelatedWork(_Out_ MYSTRUCT* someData); // Ok, when optional.
+
+    HRESULT HrProduceStruct(size_t someValue, _Out_ MYSTRUCT& someData) noexcept
+    {
+        someData = {}; // Good. Never leave out params potentially uninitialized.
+        // And do whatever work is required to populate thisData.
+        ...
+    }
+
+    // Avoid in-out params whenever reasonably possible.
+    void CalculateSomething(int32_t& inputAndOutput);                   // Avoid this.
+    int CalculateSomething(int32_t input);                              // Prefer this.
+
+    // Avoid them even if the function return value isn't freely available.
+    SOMETHING CalculateSomething(_Inout_ int32_t* inputAndOutput);      // Avoid this.
+    SOMETHING CalculateSomething(int32_t input, _Out_ int32_t& output); // Ok, but avoid out params when reasonable.
+    std::pair<SOMETHING, output> CalculateSomething(int32_t input);     // Consider this.
+
+Office.All SAL Guidance | Reason | Notes
+-- | -- | --
+Do not use SAL when unambiguous language constructs can be used instead. | SAL is non-standard. Avoid its introduction when it's not serving strong value. | For example, a const reference is unambiguously a non-null in param.
+Use SAL when it clarifies otherwise unavoidable ambiguity. | Disambiguates intent. Static analysis finds bugs. | Pointers are inherently ambiguous.
+Always annotate out pointers. | Output parameters are inherently ambiguous as to whether the incoming value is optional, and whether post guarantees (e.g. postnull) are upheld on function failure.
+Always annotate optional pointers. | The optionality of a pointer parameters is not known unless annotated.
+Do not annotate value types. | Arguments passed by value are unambiguously in params. Annotating them serves no logical value, restates the obvious, and clutters the source code.
+Always explicitly annotate both declaration and definition. Do not use `_Use_decl_annotations_`. | The function definition should contain all relevant information for a reader. `_Use_decl_annotations_` works against that goal by pushing information further away from where it's most useful. | Visual Studio biases heavily towards the definition with F12 lookup, peek, and intellisense features. And code reviews are likely to have only the definition included in a diff.
+
+    HRESULT DoFoo(MYSTRUCT* aStruct);   // Ambiguous. In? Out? Inout? Optional?
+
+    // If it was "in", it should have also been const, but even that's not quite enough:
+    HRESULT DoFoo(const MYSTRUCT& aStruct);          // Good, if non-optional. Unambiguous. No SAL required.
+    HRESULT DoFoo();                                 // If optional, consider also offering a DoFoo().
+    HRESULT DoFoo(_In_ const MYSTRUCT* aStruct);     // Ok, if you must. Unambiguously non-optional.
+    HRESULT DoFoo(_In_opt_ const MYSTRUCT* aStruct); // Ok, if you must. Unambiguously optional.
+
+    // If it was "inout":
+    HRESULT DoFoo(const MYSTRUCT& inStruct, _Out_ MYSTRUCT& outStruct); // Best, if you can.
+    HRESULT DoFoo(_Inout_ MYSTRUCT& aStruct);                           // Ok, if you must. Unambiguously non-optional.
+    HRESULT DoFoo(_Inout_opt_ MYSTRUCT* aStruct);                       // Ok, if you must. Unambiguously optional.
+
+    // If it was "out":
+    HRESULT DoFoo(_Out_ MYSTRUCT& aStruct);     // Good, if non-optional. Unambiguous.
+    HRESULT DoFoo();                            // If optional, consider also offering a DoFoo().
+    HRESULT DoFoo(_Out_ MYSTRUCT* aStruct);     // Ok, if you must. Unambiguously non-optional.
+    HRESULT DoFoo(_Out_opt_ MYSTRUCT* aStruct); // Ok, if you must. Unambiguously optional.
+
+    // Be sure to annotate common special behaviors, for example:
+    HRESULT DoFoo(_Outptr_result_nullonfailure_ PWSTR* aString); // *aString is nullptr on failure.
+    HRESULT DoFoo(_COM_Outptr_ IFoo** foo);                      // nullptr on failure.
+    HRESULT DoFoo(_COM_Outptr_result_maybenull_ IFoo** foo);     // And sometimes nullptr on success.
+
 ### <a name="Rf-in"></a>F.16: For "in" parameters, pass cheaply-copied types by value and others by reference to `const`
 
 ##### Reason
@@ -2852,6 +2966,17 @@ Both let the caller know that a function will not modify the argument, and both 
 
 What is "cheap to copy" depends on the machine architecture, but two or three words (doubles, pointers, references) are usually best passed by value.
 When copying is cheap, nothing beats the simplicity and safety of copying, and for small objects (up to two or three words) it is also faster than passing by reference because it does not require an extra indirection to access from the function.
+
+##### Office.All ([Notes](office.notes/value_vs_ref.md))
+
+Pass non-optional object parameters by reference.
+
+    void WriteToStream(IStream& stream) noexcept;
+
+Prefer r-value references over by-value when ownership is being taken or a copy is always made.
+
+    void sink(std::unique_ptr<widget>&& widget) noexcept;
+    void storeValue(std::wstring&& value) noexcept;
 
 ##### Example
 
@@ -2920,6 +3045,28 @@ If you need the notion of an optional value, use a pointer, `std::optional`, or 
 ##### Reason
 
 This makes it clear to callers that the object is assumed to be modified.
+
+##### Office.All
+
+For classes or expensive to copy types, the Core Guidelines guidance is sound.
+
+But for cheaply copied POD types, prefer to separate in-out parameters into separate input values and output values. See examples below, and note also [F.21: To return multiple "out" values, prefer returning a struct or tuple](#Rf-out-multi).
+
+**Reason**: The function return value is best suited for returned information.
+
+    // Classes or expensive to copy types, follow guidance:
+    void RemoveDuplicates(std::vector<int32_t>& values);      // This is fine.
+
+    // But with cheaply copied values:
+    int CalculateSomething(int32_t input);                    // Prefer this.
+    void CalculateSomething(_Inout_ int32_t& inputAndOutput); // Avoid this.
+
+    // When there are multiple values involved:
+    THING_INFO CalculateSomething(const THING_INFO& input);                       // Good. See F.21.
+    std::tuple<Thing, int> CalculateSomething(const Thing& thing, int32_t input); // Also ok. See F.21.
+
+    // Sometimes return value isn't available. Still, prefer separate in and out parameters.
+    HRESULT CalculateSomething(const THING_INFO& input, _Out_ THING_INFO& output); // Ok.
 
 ##### Example
 
@@ -3079,6 +3226,10 @@ A return value is self-documenting as an "output-only" value.
 Note that C++ does have multiple return values, by convention of using a `tuple` (including `pair`), possibly with the extra convenience of `tie` or structured bindings (C++17) at the call site.
 Prefer using a named struct where there are semantics to the returned value. Otherwise, a nameless `tuple` is useful in generic code.
 
+##### Office.All
+
+* Prefer to use a struct over pair/tuple. A struct is self-documenting.
+
 ##### Example
 
     // BAD: output-only parameter documented in a comment
@@ -3089,12 +3240,24 @@ Prefer using a named struct where there are semantics to the returned value. Oth
         return status;
     }
 
-    // GOOD: self-documenting
+    // OK: caller has to look at comment or code to determine what values means
     tuple<int, string> f(const string& input)
     {
         // ...
         return make_tuple(status, something());
     }
+
+    // GOOD: self-documenting
+    struct Result
+    {
+        int starting_index;
+        string extra_data;
+    };
+    Result f(const string& input)
+    {
+        // ...
+        return { starting_index, something(input) };
+    }    
 
 C++98's standard library already used this style, because a `pair` is like a two-element `tuple`.
 For example, given a `set<string> my_set`, consider:
@@ -3235,12 +3398,16 @@ better
 
 * (Simple) ((Bounds)) Warn for any arithmetic operation on an expression of pointer type that results in a value of pointer type.
 
-### <a name="Rf-nullptr"></a>F.23: Use a `not_null<T>` to indicate that "null" is not a valid value
+### <a name="Rf-nullptr"></a>F.23: ~~Use a `not_null<T>` to indicate that "null" is not a valid value~~
 
 ##### Reason
 
 Clarity. A function with a `not_null<T>` parameter makes it clear that the caller of the function is responsible for any `nullptr` checks that may be necessary.
 Similarly, a function with a return value of `not_null<T>` makes it clear that the caller of the function does not need to check for `nullptr`.
+
+##### Office.All
+
+Generally, non-optional parameters should be references. There are some performance concerns with not_null (see [I.12](#Ri-nullptr)).
 
 ##### Example
 
@@ -3386,6 +3553,10 @@ You need to pass a pointer rather than an object if what you are transferring is
 
 ### <a name="Rf-shared_ptr"></a>F.27: Use a `shared_ptr<T>` to share ownership
 
+##### Office.All
+
+Office generally prefers intrusive ref-counting using `Mso::IRefCounted` + `Mso::RefCountedObject` or `IUnknown` + `Mso::UnknownObject` and using `Mso::TCntPtr`.
+
 ##### Reason
 
 Using `std::shared_ptr` is the standard way to represent shared ownership. That is, the last owner deletes the object.
@@ -3418,6 +3589,10 @@ Have a single object own the shared object (e.g. a scoped object) and destroy th
 (Not enforceable) This is a too complex pattern to reliably detect.
 
 ### <a name="Rf-ptr-ref"></a>F.60: Prefer `T*` over `T&` when "no argument" is a valid option
+
+##### Office.All
+
+Prefer the additional usage of SAL annotations in all new code, and in this case _In_opt_ be added to T* as well.
 
 ##### Reason
 
@@ -3796,29 +3971,53 @@ Functions can't capture local variables or be defined at local scope; if you nee
 
 Generic lambdas offer a concise way to write function templates and so can be useful even when a normal function template would do equally well with a little more syntax. This advantage will probably disappear in the future once all functions gain the ability to have Concept parameters.
 
+##### Office.All
+
+Prefer to keep lambda bodies trivial. Consider moving nontrivial code from the lambda body into a named function.
+
+**Reason**: When wrapped with a macro, as is common with some `ReturnIfFailed` style HRESULT return wrappers, the body of the lambda becomes unavailable for standard breakpoints with the entire lambda body treated as a single line for source level debugging and compiler error reporting.
+
+    // Don't do this. It looks nice, but the debugging experience is bad.
+    ReturnIfFailedMacro(HrFunctionTakingALambda([&someArgument]
+    {
+        // Multiple lines of code here.
+        // But the debugger sees only one.
+    }));
+
+    // Prefer this.
+    ReturnIfFailedMacro(HrFunctionTakingALambda([&someArgument]
+    {
+        // Normal debugging experience inside named function.
+        DoTheActualWork(someArgument);
+    }));
+
+See also:
+* [CP.31: Pass small amounts of data between threads by value, rather than by reference or pointer](#Rconc-data-by-value)
+* [F.53: Avoid capturing by reference in lambdas that will be used nonlocally, including returned, stored on the heap, or passed to another thread](#Rf-value-capture)
+* [F.54: If you capture `this`, capture all variables explicitly (no default capture)](#Rf-this-capture)
+
 ##### Enforcement
 
 * Warn on use of a named non-generic lambda (e.g., `auto x = [](int i) { /*...*/; };`) that captures nothing and appears at global scope. Write an ordinary function instead.
 
-### <a name="Rf-default-args"></a>F.51: Where there is a choice, prefer default arguments over overloading
+### <a name="Rf-default-args"></a>F.51: ~~Where there is a choice, prefer default arguments over overloading~~
+
+##### Office.All
+
+Do not use overloading for semantically different behavior.
+
+    void print(const string& s) noexcept;
+    void formatAndPrint(const string& s, format f) noexcept;
+
+Be aware of potential performance impact to using default arguments. Use of defaults increases code size by forcing the compiler to push all the defaults at every callsite. Overloads allow that to be consolidated to one callsite and impact becomes pay-for-play. 
 
 ##### Reason
 
-Default arguments simply provide alternative interfaces to a single implementation.
-There is no guarantee that a set of overloaded functions all implement the same semantics.
-The use of default arguments can avoid code replication.
+~~Default arguments simply provide alternative interfaces to a single implementation.~~
+~~There is no guarantee that a set of overloaded functions all implement the same semantics.~~
+~~The use of default arguments can avoid code replication.~~
 
 ##### Note
-
-There is a choice between using default argument and overloading when the alternatives are from a set of arguments of the same types.
-For example:
-
-    void print(const string& s, format f = {});
-
-as opposed to
-
-    void print(const string& s);  // use default format
-    void print(const string& s, format f);
 
 There is not a choice when a set of functions are used to do a semantically equivalent operation to a set of types. For example:
 
@@ -4009,6 +4208,8 @@ Class rule summary:
 * [C.8: Use `class` rather than `struct` if any member is non-public](#Rc-class)
 * [C.9: Minimize exposure of members](#Rc-private)
 
+* [C.Office.1: Prefer public methods over friend classes](#Rc-public-over-friend)
+
 Subsections:
 
 * [C.concrete: Concrete types](#SS-concrete)
@@ -4136,6 +4337,14 @@ Ideally, and typically, an interface is far more stable than its implementation(
 ##### Reason
 
 Less coupling than with member functions, fewer functions that can cause trouble by modifying object state, reduces the number of functions that needs to be modified after a change in representation.
+
+##### Office.All
+
+If a given job can be done using a class's public APIs, consider keeping resulting function outside of the class. Else, either make it a member function, or increase public API surface to keep the code outside of the class. 
+
+##### Note
+
+Be careful when writing thread-safe code - it may force the function to be in the class.
 
 ##### Example
 
@@ -4365,6 +4574,28 @@ Prefer the order `public` members before `protected` members before `private` me
 * [Flag protected data](#Rh-protected).
 * Flag mixtures of `public` and private `data`
 
+### <a name="Rc-public-over-friend"></a>C.Office.1: Prefer public methods over friend classes
+
+Prefer public methods over friend classes. Friend classes violate [C.9: Minimize exposure of members](#Rc-private).
+
+    class TooFriendly
+    {
+    private:
+        friend class TooNosy; // Don't do this.
+        int m_state = 0;
+    };
+
+    class TooNosy
+    {
+    public:
+        void DoSomething(TooFriendly& other)
+        {
+            other.m_state = 42; // Don't do this.
+        }
+    };
+
+**Note**: This is a formalization of [To-do: Unclassified proto-rules](#S-unclassified), "No long-distance friendship".
+
 ## <a name="SS-concrete"></a>C.concrete: Concrete types
 
 One ideal for a class is to be a regular type.
@@ -4478,8 +4709,8 @@ These are *default operations*:
 * a default constructor: `X()`
 * a copy constructor: `X(const X&)`
 * a copy assignment: `operator=(const X&)`
-* a move constructor: `X(X&&)`
-* a move assignment: `operator=(X&&)`
+* a move constructor: `X(X&&) noexcept`
+* a move assignment: `operator=(X&&) noexcept`
 * a destructor: `~X()`
 
 By default, the compiler defines each of these operations if it is used, but the default can be suppressed.
@@ -4858,6 +5089,69 @@ There is a lot of code that is non-specific about ownership.
 If the `T*` or `T&` is owning, mark it `owning`. If the `T*` is not owning, consider marking it `ptr`.
 This will aid documentation and analysis.
 
+##### Office.All Note
+
+If a class or struct contains a raw pointer (T*) or reference (T&) member, objects of this type should be restricted to live only on the stack, in order to prevent dangling pointer bugs. This may be done with the Noheap OACR annotation,
+or by deleting the new/delete operators for the class/struct. (Also, consider deleting copy construction and assignment operators as well.)
+
+If the class/struct cannot be restricted to only live on the stack, then it should use a smart pointer (e.g., std::unique_ptr, Mso::TCntPtr) or smart reference (e.g., Mso::TCntRef) to ensure that the pointed-to object remains alive for as long as the pointing object references it.
+
+Example:
+
+Defective source:
+
+    struct S
+    {
+        T* m_pT;
+    };
+
+Corrected source:
+
+    // Ensure that 'S' is never allocated on the heap, via OACR annotation
+    Noheap struct S
+    {
+        T* m_pT;
+
+    private:
+        DECLARE_COPYCONSTR_AND_ASSIGNMENT(S);
+    };
+
+or
+
+    // Ensure that 'S' is never allocated on the heap, by removing operators new/delete
+    struct S
+    {
+        T* m_pT;
+
+    private:
+        DECLARE_COPYCONSTR_AND_ASSIGNMENT(S);
+        void* operator new(size_t) = delete;
+        void* operator new[](size_t, size_t) = delete;
+    };
+
+or
+
+    // Replace the raw pointer with a smart pointer in order to ensure lifetime of the pointed-to object
+    struct S
+    {
+        Mso::TCntPtr< T > m_pT;
+    };
+
+or
+
+    // Replace the raw pointer with a weak pointer in order to detect the case where the pointed-to object has been destroyed
+    struct S
+    {
+        Mso::WeakPtr< T > m_pT;
+    };
+
+Reason:
+Raw pointers and references do not affect the lifetimes of the pointed-to objects. Thus, if there is any chance that the pointing object will out-live the pointed-to object, there is a potential use-after-free bug, where the pointed-to object is destroyed, and then the pointing object subsequently attemps to access the pointed-to object via its pointer/reference.
+
+Even if such a bug is not present in the code today, it is easy to cause one in the future through seemingly benign refactoring, when such objects are allocated on the heap.
+
+If the pointing object is only allowed to be allocated on the stack, the deterministic lifetime rules for stack objects make it much easier to be certain that it cannot outlive the pointed-to object, so this rule can be relaxed in these cases.
+
 ##### Enforcement
 
 Look at the initialization of raw member pointers and member references and see if an allocation is used.
@@ -4910,6 +5204,10 @@ The default copy operation will just copy the `p1.p` into `p2.p` leading to a do
     class Smart_ptr3 {
         owner<T*> p;   // OK: explicit about ownership of *p
         // ...
+
+##### Office.All
+	Rather than updating code with gsl::owner<> which is not preferred in Office, instead update with Ofc::TOwnerPtr or std::unique_ptr so that it will get auto-destructed.
+
     public:
         // ...
         // ... copy and move operations ...
@@ -5191,6 +5489,19 @@ The idiom of having constructors acquire resources and destructors release them 
 ##### Reason
 
 Leaving behind an invalid object is asking for trouble.
+
+##### Office.All
+
+If your codebase isn't using exceptions, use a factory method to deal with potentially failing initialization.
+
+    Mso::optional<WidgetFilter> WidgetFilter::Make(IProvider& provider) noexcept
+    {
+        Mso::optional<Widget> widget = provider.TryGetWidget();
+        if (!widget)
+            return {};
+
+        return WidgetFilter(*widget);
+    }
 
 ##### Example
 
@@ -6622,6 +6933,8 @@ Summary of container rules:
 * [C.104: Give a container a default constructor that sets it to empty](#Rcon-empty)
 * ???
 * [C.109: If a resource handle has pointer semantics, provide `*` and `->`](#Rcon-ptr)
+##### Office.All
+* [C.115 Give containers begin() and end() iterators so they work with range-based for loops]
 
 **See also**: [Resources](#S-resource)
 
@@ -6787,6 +7100,16 @@ A function object is an object supplying an overloaded `()` so that you can call
 A lambda expression (colloquially often shortened to "a lambda") is a notation for generating a function object.
 Function objects should be cheap to copy (and therefore [passed by value](#Rf-in)).
 
+##### Office.All
+Function objects may or may not be cheap to copy, depending on the state inside that object.
+For synchronous invocation, take `const TFunc&`.  For type-erasure cases, use `const Mso::FunctorRef<>&`.
+For async invocation, take `TFunc&&`.  For type-erasure cases, use `Mso::Functor<>&&`.
+
+For more information on 'type-erasure', refer to the links below
+  http://www.cplusplus.com/articles/oz18T05o/
+  https://akrzemi1.wordpress.com/2013/11/18/type-erasure-part-i/
+  https://www.modernescpp.com/index.php/c-core-guidelines-type-erasure
+
 Summary:
 
 * [F.50: Use a lambda when a function won't do (to capture local variables, or to write a local function)](#Rf-capture-vs-overload)
@@ -6813,7 +7136,7 @@ Designing rules for classes in a hierarchy summary:
 * [C.128: Virtual functions should specify exactly one of `virtual`, `override`, or `final`](#Rh-override)
 * [C.129: When designing a class hierarchy, distinguish between implementation inheritance and interface inheritance](#Rh-kind)
 * [C.130: For making deep copies of polymorphic classes prefer a virtual `clone` function instead of copy construction/assignment](#Rh-copy)
-* [C.131: Avoid trivial getters and setters](#Rh-get)
+* [C.131: Avoid trivial getter/setter pairs](#Rh-get)
 * [C.132: Don't make a function `virtual` without reason](#Rh-virtual)
 * [C.133: Avoid `protected` data](#Rh-protected)
 * [C.134: Ensure all non-`const` data members have the same access level](#Rh-public)
@@ -7047,6 +7370,11 @@ It's simple and clear:
 * `virtual` means exactly and only "this is a new virtual function."
 * `override` means exactly and only "this is a non-final overrider."
 * `final` means exactly and only "this is a final overrider."
+
+##### Office.All
+
+Adding `virtual` on overrides is purely a style choice. Teams are free to add it or not add it.
+Note that C++/CLI requires using both virtual and override on overriden declarations.
 
 ##### Example, bad
 
@@ -7349,11 +7677,21 @@ Generally, it is recommended to use smart pointers to represent ownership (see [
 
 
 
-### <a name="Rh-get"></a>C.131: Avoid trivial getters and setters
+### <a name="Rh-get"></a>C.131: Avoid trivial getter/setter pairs
 
 ##### Reason
 
 A trivial getter or setter adds no semantic value; the data item could just as well be `public`.
+
+##### Office.All
+
+Office heavily clarifies this Core Guidelines guidance.
+
+Do not expose data members on classes. Adhering to this principle will occasionally require "trivial" getter/setter pairs.
+
+**Reason**: Classes are expected to maintain invariants over their internal data. Direct exposure of data members casts doubt on this expectation, makes future class contract extension more difficult, and makes mocking and related testing work more difficult.
+
+**Note**: A class which would contain _only_ trivial getter/setter pairs should, as outlined in the original Core Guidelines guidance below, probably become a struct with only public data members and no member functions. Structs are expected to behave as POD types.
 
 ##### Example
 
@@ -7654,11 +7992,15 @@ For variadic bases, C++17 introduced a variadic form of the using-declaration,
 
 Diagnose name hiding
 
-### <a name="Rh-final"></a>C.139: Use `final` on classes sparingly
+### <a name="Rh-final"></a>C.139: ~~Use `final` on classes sparingly~~
 
 ##### Reason
 
-Capping a hierarchy with `final` classes is rarely needed for logical reasons and can be damaging to the extensibility of a hierarchy.
+~~Capping a hierarchy with `final` classes is rarely needed for logical reasons and can be damaging to the extensibility of a hierarchy.~~
+
+##### Office.All
+
+Types marked as final can result in better optimization. Unless you are writing generic library code, prefer to mark things as final.
 
 ##### Example, bad
 
@@ -7770,11 +8112,15 @@ You can safely access a named polymorphic object in the scope of its definition,
 
 Flag all slicing.
 
-### <a name="Rh-dynamic_cast"></a>C.146: Use `dynamic_cast` where class hierarchy navigation is unavoidable
+### <a name="Rh-dynamic_cast"></a>C.146: ~~Use `dynamic_cast` where class hierarchy navigation is unavoidable~~
 
 ##### Reason
 
-`dynamic_cast` is checked at run time.
+~~`dynamic_cast` is checked at run time.~~
+
+##### Office.All
+
+Do not use dynamic_cast (except for WinRT CXX code). Use query_cast, qi_cast, or qi_cast_or_crash for dynamic casting.
 
 ##### Example
 
@@ -7907,11 +8253,15 @@ Consider:
 * Flag all uses of `static_cast` for downcasts, including C-style casts that perform a `static_cast`.
 * This rule is part of the [type-safety profile](#Pro-type-downcast).
 
-### <a name="Rh-ref-cast"></a>C.147: Use `dynamic_cast` to a reference type when failure to find the required class is considered an error
+### <a name="Rh-ref-cast"></a>C.147: ~~Use `dynamic_cast` to a reference type when failure to find the required class is considered an error~~
 
 ##### Reason
 
-Casting to a reference expresses that you intend to end up with a valid object, so the cast must succeed. `dynamic_cast` will then throw if it does not succeed.
+~~Casting to a reference expresses that you intend to end up with a valid object, so the cast must succeed. `dynamic_cast` will then throw if it does not succeed.~~
+
+##### Office.All
+
+Do not use dynamic_cast (except for WinRT CXX code). Use query_cast, qi_cast, or qi_cast_or_crash for dynamic casting.
 
 ##### Example
 
@@ -7921,13 +8271,17 @@ Casting to a reference expresses that you intend to end up with a valid object, 
 
 ???
 
-### <a name="Rh-ptr-cast"></a>C.148: Use `dynamic_cast` to a pointer type when failure to find the required class is considered a valid alternative
+### <a name="Rh-ptr-cast"></a>C.148: ~~Use `dynamic_cast` to a pointer type when failure to find the required class is considered a valid alternative~~
 
 ##### Reason
 
-The `dynamic_cast` conversion allows to test whether a pointer is pointing at a polymorphic object that has a given class in its hierarchy. Since failure to find the class merely returns a null value, it can be tested during run time. This allows writing code that can choose alternative paths depending on the results.
+~~The `dynamic_cast` conversion allows to test whether a pointer is pointing at a polymorphic object that has a given class in its hierarchy. Since failure to find the class merely returns a null value, it can be tested during run time. This allows writing code that can choose alternative paths depending on the results.~~
 
-Contrast with [C.147](#Rh-ptr-cast), where failure is an error, and should not be used for conditional execution.
+~~Contrast with [C.147](#Rh-ptr-cast), where failure is an error, and should not be used for conditional execution.~~
+
+##### Office.All
+
+Do not use dynamic_cast (except for WinRT CXX code). Use query_cast, qi_cast, or qi_cast_or_crash for dynamic casting.
 
 ##### Example
 
@@ -7961,7 +8315,7 @@ Therefore the result of the `dynamic_cast` should always be treated as if it may
 
 * (Complex) Unless there is a null test on the result of a `dynamic_cast` of a pointer type, warn upon dereference of the pointer.
 
-### <a name="Rh-smart"></a>C.149: Use `unique_ptr` or `shared_ptr` to avoid forgetting to `delete` objects created using `new`
+### <a name="Rh-smart"></a>C.149: Use an RAII class such as `unique_ptr` or `shared_ptr` to avoid forgetting to `delete` objects created using `new`
 
 ##### Reason
 
@@ -7982,12 +8336,19 @@ Avoid resource leaks.
 * Flag initialization of a naked pointer with the result of a `new`
 * Flag `delete` of local variable
 
+##### Office.All Note
+Office generally prefers Mso::TCntPtr over std::shared_ptr
+
 ### <a name="Rh-make_unique"></a>C.150: Use `make_unique()` to construct objects owned by `unique_ptr`s
 
 ##### Reason
 
 `make_unique` gives a more concise statement of the construction.
 It also ensures exception safety in complex expressions.
+
+##### Office.All
+
+In projects not using exceptions, add `noexcept` to the function calling std::make_unique to get 'fail fast' behavior.
 
 ##### Example
 
@@ -8093,6 +8454,8 @@ Overload rule summary:
 * [C.167: Use an operator for an operation with its conventional meaning](#Ro-overload)
 * [C.168: Define overloaded operators in the namespace of their operands](#Ro-namespace)
 * [C.170: If you feel like overloading a lambda, use a generic lambda](#Ro-lambda)
+##### Office.All
+* [C.175: always use Mso::FunctorRef or Mso::Functor instead of std::function - for better build speed and runtime perf.]
 
 ### <a name="Ro-conventional"></a>C.160: Define operators primarily to mimic conventional usage
 
@@ -8450,6 +8813,12 @@ You cannot overload by defining two different lambdas with the same name.
 ##### Enforcement
 
 The compiler catches the attempt to overload a lambda.
+
+### <a name="Ro-functor"></a>C.175: Always use Mso::FunctorRef or Mso::Functor instead of std::function
+
+##### Reason
+
+To improve runtime performance and build speed, use `Mso::Functor` and Mso::`FunctorRef` instead of `std::function`. Functor is faster to build, leaner at runtime, and supports things that `std::function` can’t (e.g. capture of move-only objects).
 
 ## <a name="SS-union"></a>C.union: Unions
 
@@ -8817,12 +9186,40 @@ Such off-by-one `switch`-statements are often the results of an added enumerator
 * Flag `switch`-statements where the `case`s cover most but not all enumerators of an enumeration.
 * Flag `switch`-statements where the `case`s cover a few enumerators of an enumeration, but has no `default`.
 
+##### Office.All
+
+Additionally, for related sets of boolean options, prefer using an enum to define bitwise flags:
+* Specify the underlying type of the enum to align with [ES.101: Use unsigned types for bit manipulation](#Res-unsigned) and establish clarity on number of bits available for use.
+* Always include a 'None' option set to the zero value.
+* Use DEFINE_ENUM_FLAG_OPERATORS, but note that due to a limitation in that macro it only works at global scope.
+
+**Reason**: Concise compared to alternatives. Adds type safety.
+
+    enum class FooOptions : uint32_t
+    {
+        None              = 0x00,
+        SimpleFooRequired = 0x01,
+        SuperFooEnabled   = 0x02,
+        BarAllowed        = 0x04,
+    };
+    DEFINE_ENUM_FLAG_OPERATORS(FooOptions);
+
+**Note**: When naming an `enum class` and its values, finding the right balance between too short (likely cryptic) and too long can be challenging. Do your best to remain both clear and concise.
+
+    if (fooFlags & FooOpts::RO)                                                       // Too short.
+    if (fooFlags & FooConfigurationStateFlags::ConfigurationCacheIsCurrentlyReadOnly) // Too long.
+    if (fooFlags & FooConfigStateFlags::ReadOnly)                                     // Reasonable.
+
 
 ### <a name="Renum-class"></a>Enum.3: Prefer class enums over "plain" enums
 
 ##### Reason
 
 To minimize surprises: traditional enums convert to int too readily.
+
+##### Office.All
+
+When it is absolutely required to convert to and from integers, use the Mso::to_enum and Mso::to_underlying helpers.
 
 ##### Example
 
@@ -8932,13 +9329,44 @@ Use `constexpr` values instead. For example:
 Flag unnamed enumerations.
 
 
-### <a name="Renum-underlying"></a>Enum.7: Specify the underlying type of an enumeration only when necessary
+### <a name="Renum-underlying"></a>Enum.7: Specify the underlying type of an enumeration ~~only when necessary~~
 
 ##### Reason
 
-The default is the easiest to read and write.
-`int` is the default integer type.
-`int` is compatible with C `enum`s.
+~~The default is the easiest to read and write.~~
+~~`int` is the default integer type.~~
+~~`int` is compatible with C `enum`s.~~
+
+##### Office.All
+
+(In C++17, specifying an underlying type removes strong type checking for enumeration assignment; pending further review)
+
+
+Always specify underlying type and prefer unsigned types (uint32_t instead of int).
+
+    enum class Mode : uint32_t 
+    {
+        Boot, 
+        Run, 
+        Print,
+        
+        Count // or Max
+    };
+
+Unsigned types are easier to validate as checking for negative values isn't required.
+
+    void SetMode(Mode mode) noexcept
+    {
+        VerifyElseCrash(mode < Count);
+        m_mode = mode;
+    }
+
+Avoid forward-declaring enums. Move the enum to a separate header if there are concerns about over-including headers.
+
+###### Office All:
+
+Consider explicitly specifying enum values for enums used for telemetry purposes and other cases where values should not change.
+To help enforce values are not changed, consider utilizing static_assert ( e.g. `static_assert( Mso::to_underlying( DisableReasons::DocumentIsMarkedReadOnly ) == 0, "Value has shifted, are you sure you want that?";` ) ) 
 
 ##### Example
 
@@ -8951,7 +9379,7 @@ The default is the easiest to read and write.
 
 ##### Note
 
-Specifying the underlying type is necessary in forward declarations of enumerations:
+Specifying the underlying type is necessary in forward declarations of enumerations, but forward declarations should be avoided:
 
     enum Flags : char;
 
@@ -9706,17 +10134,21 @@ Both cases are an error under the [`sharedptrparam` guideline](#Rr-smartptrparam
 these functions should accept a smart pointer only if they need to participate in the widget's lifetime management. Otherwise they should accept a `widget*`, if it can be `nullptr`. Otherwise, and ideally, the function should accept a `widget&`.
 These smart pointers match the `Shared_pointer` concept, so these guideline enforcement rules work on them out of the box and expose this common pessimization.
 
-### <a name="Rr-uniqueptrparam"></a>R.32: Take a `unique_ptr<widget>` parameter to express that a function assumes ownership of a `widget`
+### <a name="Rr-uniqueptrparam"></a>R.32: Take a `unique_ptr<widget>` parameter by r-ravlue reference to express that a function assumes ownership of a `widget`
 
 ##### Reason
 
 Using `unique_ptr` in this way both documents and enforces the function call's ownership transfer.
 
+##### Office.All
+
+See guidance in [F.15] regarding references and r-values.
+
 ##### Example
 
-    void sink(unique_ptr<widget>); // takes ownership of the widget
+    void sink(unique_ptr<widget>&&); // takes ownership of the widget
 
-    void uses(widget*);            // just uses the widget
+    void uses(widget&);            // just uses the widget
 
 ##### Example, bad
 
@@ -9750,15 +10182,17 @@ Using `unique_ptr` in this way both documents and enforces the function call's r
 * (Simple) Warn if a function takes a `Unique_pointer<T>` parameter by lvalue reference and does not either assign to it or call `reset()` on it on at least one code path. Suggest taking a `T*` or `T&` instead.
 * (Simple) ((Foundation)) Warn if a function takes a `Unique_pointer<T>` parameter by reference to `const`. Suggest taking a `const T*` or `const T&` instead.
 
-### <a name="Rr-sharedptrparam-owner"></a>R.34: Take a `shared_ptr<widget>` parameter to express that a function is part owner
+### <a name="Rr-sharedptrparam-owner"></a>R.34: Take a `const shared_ptr<widget>&` parameter to express that a function is part owner
 
 ##### Reason
 
 This makes the function's ownership sharing explicit.
 
-##### Example, good
+##### Office.All
 
-    void share(shared_ptr<widget>);            // share -- "will" retain refcount
+See guidance in [F.15] regarding references and r-values.
+
+##### Example, good
 
     void may_share(const shared_ptr<widget>&); // "might" retain refcount
 
@@ -9886,6 +10320,8 @@ General rules:
 * [ES.1: Prefer the standard library to other libraries and to "handcrafted code"](#Res-lib)
 * [ES.2: Prefer suitable abstractions to direct use of language features](#Res-abstr)
 
+* [ES.Office.1: Don't create aliases for types developers already understand](#Res-alias-understand)
+
 Declaration rules:
 
 * [ES.5: Keep scopes small](#Res-scope)
@@ -9991,6 +10427,23 @@ Large parts of the standard library rely on dynamic allocation (free store). The
 ##### Enforcement
 
 Not easy. ??? Look for messy loops, nested loops, long functions, absence of function calls, lack of use of non-built-in types. Cyclomatic complexity?
+
+### <a name="Res-alias-understand"></a>ES.Office.1: Don't create aliases for types developers already understand
+
+Don't create aliases for types developers already understand, unless there is a clear gain in code clarity from doing so. See, for example, [T.42: Use template aliases to simplify notation and hide implementation details](#Rt-alias).
+
+##### Reason
+
+Aliases that obscure already understood types behind new terminology are a detriment to easily understanding code. Aliases can also introduce a false sense of security regarding type-safety.
+
+##### Example
+
+    // Behavior and correct usage of std::map and std::unique_ptr are already understood.
+    using ActionTriggerMap = std::map<Action, Trigger>; // Avoid. Loses the familiarity of std::map.
+    using ActionPtr = std::unique_ptr<Action>;          // Avoid. Loses the familiarity of std::unique_ptr.
+
+    #define fFalse          ((BOOL) 0)  // Bad. Use FALSE.
+    #define fTrue           ((BOOL) 1)  // Bad. Use TRUE.
 
 ### <a name="Res-abstr"></a>ES.2: Prefer suitable abstractions to direct use of language features
 
@@ -10147,6 +10600,10 @@ Note: C++17 and C++20 also add `if`, `switch`, and range-`for` initializer state
 ##### Reason
 
 Readability. Lowering the chance of clashes between unrelated non-local names.
+
+##### Office.All
+
+Rejected - there are mixed opinions on this rule and it feels more like a naming/style guideline.
 
 ##### Example
 
@@ -10336,41 +10793,41 @@ Flag variable and constant declarations with multiple declarators (e.g., `int* p
 * When you use `auto`, the name of the declared entity is in a fixed position in the declaration, increasing readability.
 * In a function template declaration the return type can be a member type.
 
+##### Office.All
+
+In Office apps, `auto` should only be used for lambdas or iterators (otherwise, be explicit).
+
+##### Reason
+* All else being equal, Office values "explicit code that is easy to read, understand, and verify" over "code that is verbose, concise, or easy to write".
+* In many cases office API's to retrieve objects can be ambiguous or are not clear in the exact type they are returning (i.e. TCntPtr, reference, pointer, object, etc.) which makes reading the code more difficult to easily understand. It additionally makes searching for usage of specific types during refactoring or debugging more difficult.
+
 ##### Example
 
-Consider:
+```
+auto authHandler = [ pwHost = Mso::WeakPtr< IContextHost >( GetContextHost() ), serverDocId = m_pTransactionMgr->GetServerDocumentId(), &fAuthHandlerCalled ]() noexcept
+      {
+         fAuthHandlerCalled = true;
+         Mso::TCntPtr< IContextHost > pStrongHost = pwHost.GetStrongPtr();
+         if( !pStrongHost )
+            return Mso::MakeCompletedFuture( Csi::AuthHandlerResult( E_FAIL ) );
+         return pStrongHost->PromptForUserAuth();
+      };
 
-    auto p = v.begin();   // vector<int>::iterator
-    auto h = t.future();
-    auto q = make_unique<int[]>(s);
-    auto f = [](int x) { return x + 10; };
-
-In each case, we save writing a longish, hard-to-remember type that the compiler already knows but a programmer could get wrong.
+const bool fConfiguredEndpointResult = pCsiDocStorageModeController->ConfigureEndpoint( controllerSignal, *pMocsiSyncEndpointUser, authHandler );
+```
 
 ##### Example
 
     template<class T>
     auto Container<T>::first() -> Iterator;   // Container<T>::Iterator
 
-##### Exception
-
-Avoid `auto` for initializer lists and in cases where you know exactly which type you want and where an initializer might require conversion.
-
 ##### Example
 
-    auto lst = { 1, 2, 3 };   // lst is an initializer list
-    auto x{1};   // x is an int (in C++17; initializer_list in C++11)
-
-##### Note
-
-When concepts become available, we can (and should) be more specific about the type we are deducing:
-
-    // ...
-    ForwardIterator p = algo(x, y, z);
-
-##### Example (C++17)
-
-    auto [ quotient, remainder ] = div(123456, 73);   // break out the members of the div_t result
+    auto fnCompareDictionaryItem = []( const Util::DictionaryItem& left, const Util::DictionaryItem & right ) noexcept
+       {
+          return left.m_name < right.m_name;
+       };
+	std::binary_search( baseDownloadDiff.m_modified.begin(), baseDownloadDiff.m_modified.end(), uploadDiffItem, fnCompareDictionaryItem )t
 
 ##### Enforcement
 
@@ -10986,6 +11443,10 @@ Macros don't obey the usual scope and type rules.
 Macros ensure that the human reader sees something different from what the compiler sees.
 Macros complicate tool building.
 
+##### Office.All
+
+To be more precise, don't use macros when a constant or function will work. There are some limited cases where macros need to be used (e.g. Assert).
+
 ##### Example, bad
 
     #define Case break; case   /* BAD */
@@ -11196,6 +11657,10 @@ Expressions manipulate values.
 
 Complicated expressions are error-prone.
 
+##### Office.All
+
+Complicated expressions can also be difficult to debug.
+
 ##### Example
 
     // bad: assignment hidden in subexpression
@@ -11264,6 +11729,19 @@ Tricky. How complicated must an expression be to be considered complicated? Writ
 ##### Reason
 
 Avoid errors. Readability. Not everyone has the operator table memorized.
+
+##### Office.All
+
+Even when not in doubt, parenthesize liberally in expressions with mixed operators, for example when both `&&` and `||` are present in the same expression.
+
+Parenthesize completely if bitwise operators are present.
+
+**Reason**: Affirms what the intent of the original code was. Avoids accidentally perturbing that intent through later introduction of additional conditions.
+
+    if (a == b || *name == 0 && !isAnonymous)       {}  // Avoid. Original intent is ambiguous.
+    if ((a == b || *name == 0) && !isAnonymous)     {}  // Do this, if this was the intent.
+    if (a == b || (*name == 0 && !isAnonymous))     {}  // And this, if this was the intent.
+    if ((a == b) || ((*name == 0) && !isAnonymous)) {}  // Also reasonable.
 
 ##### Example
 
@@ -13124,12 +13602,18 @@ can be surprising for many programmers.
 * Just about impossible in general because of the use of unsigned subscripts in the standard library
 * ???
 
-### <a name="Res-signed"></a>ES.102: Use signed types for arithmetic
+### <a name="Res-signed"></a>ES.102: Use SafeInt types and functions ~~signed types~~ for arithmetic
 
 ##### Reason
 
 Because most arithmetic is assumed to be signed;
 `x - y` yields a negative number when `y > x` except in the rare cases where you really want modulo arithmetic.
+
+##### Office.All
+
+Use SafeInt operations (SafeInt, SafeMin, SafeMax, etc) to avoid bugs.
+
+    size_t double_length = SafeInt<size_t>(wcslen(str)) * 2;
 
 ##### Example
 
@@ -13299,6 +13783,10 @@ can suppress warnings related to overflow,
 and opens the door for errors related to signed/unsigned mixes.
 Using `unsigned` doesn't actually eliminate the possibility of negative values.
 
+##### Office.All
+
+Clarification: use unsigned types for inherently unsigned values. Use SafeInt to ensure termination on overflow if needed.
+
 ##### Example
 
     unsigned int u1 = -2;   // Valid: the value of u1 is 4294967294
@@ -13355,14 +13843,18 @@ For example
 See ES.100 Enforcements.
 
 
-### <a name="Res-subscripts"></a>ES.107: Don't use `unsigned` for subscripts, prefer `gsl::index`
+### <a name="Res-subscripts"></a>ES.107: ~~Don't use `unsigned` for subscripts, prefer `gsl::index`~~
 
 ##### Reason
 
-To avoid signed/unsigned confusion.
-To enable better optimization.
-To enable better error detection.
-To avoid the pitfalls with `auto` and `int`.
+~~To avoid signed/unsigned confusion.~~
+~~To enable better optimization.~~
+~~To enable better error detection.~~
+~~To avoid the pitfalls with `auto` and `int`.~~
+
+##### Office.All
+
+Rejected - use unsigned types (uint32_t, uint64_t, size_t) for subscripts, indexes, lengths. Use SafeInt/SafeCast to convert between signed & unsigned types.
 
 ##### Example, bad
 
@@ -15389,6 +15881,12 @@ A consistent and complete strategy for handling errors and resource leaks is har
 ##### Reason
 
 To make error handling systematic, robust, and non-repetitive.
+
+##### Office.All
+
+Prefer usage of method naming TryDoSomething() that return results instead of throwing exceptions.
+
+In lower-level code where intepretation of HResult from system level routines those possibly can be returned so callers may interpret results and convert to app level enums, values, etc.
 
 ##### Example
 
@@ -19044,13 +19542,34 @@ The argument-type error for `bar` cannot be caught until link time because of th
 
 ???
 
-### <a name="Rs-using"></a>SF.6: Use `using namespace` directives for transition, for foundation libraries (such as `std`), or within a local scope (only)
+### <a name="Rs-using"></a>SF.6: Use `using namespace` directives for transition, ~~for foundation libraries (such as `std`),~~ or within a local scope (only)
 
 ##### Reason
 
  `using namespace` can lead to name clashes, so it should be used sparingly.
  However, it is not always possible to qualify every name from a namespace in user code (e.g., during transition)
  and sometimes a namespace is so fundamental and prevalent in a code base, that consistent qualification would be verbose and distracting.
+
+ ##### Office.All
+
+Rejecting "for foundation libraries (such as `std`)": do not use `using namespace` for short namespaces, whether `std`, `Mso`, or otherwise.
+
+Clarifying "within a local scope (only)": when the concern is that a namespace is long and introducing too much verbosity, prefer the use of namespace aliases instead of `using namespace`. A short alias mitigates the visual impact of long namespace strings without throwing away qualifying namespace information completely.
+
+**Reason**: Removal of namespace information introduces unnecessary ambiguity and reduces code portability when code dependent on a prior `using namespace` is separated from it.
+
+    // Ouch.
+    Something::Really::Long::Foo(1, 2, Something::Really::Long::Bar(3));
+
+    // Acceptable, in local scope (only). But cross your fingers that Foo and Bar were sufficiently unique.
+    using namespace Something::Really::Long;
+    ...
+    Foo(1, 2, Bar(3));
+
+    // Best. Verbosity problem solved. Namespace information preserved.
+    namespace srl = Something::Really::Long;
+    ...
+    srl::Foo(1, 2, srl::Bar(3));
 
 ##### Example
 
@@ -19060,19 +19579,19 @@ The argument-type error for `bar` cannot be caught until link time because of th
     #include <memory>
     #include <algorithm>
 
-    using namespace std;
+    // BAD: using namespace std;
 
     // ...
 
-Here (obviously), the standard library is used pervasively and apparently no other library is used, so requiring `std::` everywhere
-could be distracting.
+~~Here (obviously), the standard library is used pervasively and apparently no other library is used, so requiring `std::` everywhere~~
+~~could be distracting.~~
 
 ##### Example
 
 The use of `using namespace std;` leaves the programmer open to a name clash with a name from the standard library
 
     #include <cmath>
-    using namespace std;
+    // BAD: using namespace std;
 
     int g(int x)
     {
@@ -19131,34 +19650,39 @@ to name their own UDLs `operator""_x` - they will not collide with the standard 
 
 Flag `using namespace` at global scope in a header file.
 
-### <a name="Rs-guards"></a>SF.8: Use `#include` guards for all `.h` files
+### <a name="Rs-guards"></a>SF.8: Use `#pragma once` ~~`#include` guards~~ for all `.h` files
 
 ##### Reason
 
 To avoid files being `#include`d several times.
 
-In order to avoid include guard collisions, do not just name the guard after the filename.
-Be sure to also include a key and good differentiator, such as the name of library or component
-the header file is part of.
+~~In order to avoid include guard collisions, do not just name the guard after the filename.~~
+~~Be sure to also include a key and good differentiator, such as the name of library or component~~
+~~the header file is part of.~~
+
+##### Office.All
+
+Use #pragma once to avoid multiple inclusion.
 
 ##### Example
 
     // file foobar.h:
-    #ifndef LIBRARY_FOOBAR_H
-    #define LIBRARY_FOOBAR_H
+    #pragma once
+    // BAD: #ifndef LIBRARY_FOOBAR_H
+    // BAD: #define LIBRARY_FOOBAR_H
     // ... declarations ...
-    #endif // LIBRARY_FOOBAR_H
+    // BAD: #endif // LIBRARY_FOOBAR_H
 
 ##### Enforcement
 
-Flag `.h` files without `#include` guards.
+Flag `.h` files without `#pragma once` ~~`#include`~~ guards.
 
 ##### Note
 
-Some implementations offer vendor extensions like `#pragma once` as alternative to include guards.
-It is not standard and it is not portable.  It injects the hosting machine's filesystem semantics
-into your program, in addition to locking you down to a vendor.
-Our recommendation is to write in ISO C++: See [rule P.2](#Rp-Cplusplus).
+~~Some implementations offer vendor extensions like `#pragma once` as alternative to include guards.~~
+~~It is not standard and it is not portable.  It injects the hosting machine's filesystem semantics~~
+~~into your program, in addition to locking you down to a vendor.~~
+~~Our recommendation is to write in ISO C++: See [rule P.2](#Rp-Cplusplus).~~
 
 ### <a name="Rs-cycles"></a>SF.9: Avoid cyclic dependencies among source files
 
@@ -19345,6 +19869,11 @@ It is almost always a bug to mention an unnamed namespace in a header file.
 
 Nothing external can depend on an entity in a nested unnamed namespace.
 Consider putting every definition in an implementation source file in an unnamed namespace unless that is defining an "external/exported" entity.
+
+##### Office.All
+
+There aren't any advantages of anonymous namespaces vs. marking things as static (perhaps paired with a named namespace like `Details`).
+Teams are free to use either approach.
 
 ##### Example
 
@@ -20348,12 +20877,18 @@ Remember
 * [RAII](#Re-raii)
 * Contracts/assertions: Use GSL's `Expects` and `Ensures` (until we get language support for contracts)
 
-### <a name="Rnr-lots-of-files"></a>NR.4: Don't insist on placing each class declaration in its own source file
+### <a name="Rnr-lots-of-files"></a>NR.4: ~~Don't: Place each class declaration in its own source file~~
 
 ##### Reason
 
 The resulting number of files from placing each class in its own file are hard to manage and can slow down compilation.
 Individual classes are rarely a good logical unit of maintenance and distribution.
+
+##### Office.All
+
+It's easier to navigate the code base if Employee is declared in Employee.h and implemented in Employee.cpp (but tightly interconnected classes (like supporting classes) can be in the same file).
+
+When placing multiple classes in the same source file, favor limiting to related classes and declarations. Avoid monolithic source and header files of unrelated objects that become 'dumping grounds' and difficult to manage.
 
 ##### Example
 
@@ -21212,6 +21747,10 @@ The use of `p` for pointer and `x` for a floating-point variable is conventional
 
 **Rationale**: Consistence in naming and naming style increases readability.
 
+##### Office.All
+
+Office shared code typically uses the CamelCase standard described below. Refer to your team's guidance for specifics.
+
 ##### Note
 
 There are many styles and when you use multiple libraries, you can't follow all their different conventions.
@@ -21283,20 +21822,24 @@ This rule applies to non-macro symbolic constants:
 * Flag macros with lower-case letters
 * Flag `ALL_CAPS` non-macro names
 
-### <a name="Rl-camel"></a>NL.10: Prefer `underscore_style` names
+### <a name="Rl-camel"></a>NL.10: ~~Prefer `underscore_style` names~~
 
 ##### Reason
 
 The use of underscores to separate parts of a name is the original C and C++ style and used in the C++ Standard Library.
 
+##### Office.All
+
+While most Office code uses CamelCase, there is no global requirement to do so. Prefer to match the existing naming style in your codebase.
+
 ##### Note
 
-This rule is a default to use only if you have a choice.
+~~This rule is a default to use only if you have a choice.~~
 Often, you don't have a choice and must follow an established style for [consistency](#Rl-name).
 The need for consistency beats personal taste.
 
-This is a recommendation for [when you have no constraints or better ideas](#S-naming).
-This rule was added after many requests for guidance.
+~~This is a recommendation for [when you have no constraints or better ideas](#S-naming).~~
+~~This rule was added after many requests for guidance.~~
 
 ##### Example
 
@@ -21440,68 +21983,15 @@ However, macros obscures what is being expressed anyway.
 
 Flag departures from the suggested order. There will be a lot of old code that doesn't follow this rule.
 
-### <a name="Rl-knr"></a>NL.17: Use K&R-derived layout
+### <a name="Rl-knr"></a>NL.17: ~~Use K&R-derived layout~~
 
 ##### Reason
 
-This is the original C and C++ layout. It preserves vertical space well. It distinguishes different language constructs (such as functions and classes) well.
+~~This is the original C and C++ layout. It preserves vertical space well. It distinguishes different language constructs (such as functions and classes) well.~~
 
-##### Note
+##### Office.All
 
-In the context of C++, this style is often called "Stroustrup".
-
-This is a recommendation for [when you have no constraints or better ideas](#S-naming).
-This rule was added after many requests for guidance.
-
-##### Example
-
-    struct Cable {
-        int x;
-        // ...
-    };
-
-    double foo(int x)
-    {
-        if (0 < x) {
-            // ...
-        }
-
-        switch (x) {
-        case 0:
-            // ...
-            break;
-        case amazing:
-            // ...
-            break;
-        default:
-            // ...
-            break;
-        }
-
-        if (0 < x)
-            ++x;
-
-        if (x < 0)
-            something();
-        else
-            something_else();
-
-        return some_value;
-    }
-
-Note the space between `if` and `(`
-
-##### Note
-
-Use separate lines for each statement, the branches of an `if`, and the body of a `for`.
-
-##### Note
-
-The `{` for a `class` and a `struct` is *not* on a separate line, but the `{` for a function is.
-
-##### Note
-
-Capitalize the names of your user-defined types to distinguish them from standards-library types.
+There is no global style for Office - match what the existing code does.
 
 ##### Note
 
