@@ -52,6 +52,7 @@ ASIC
 asio
 AST
 async
+AUTOSAR
 'B'
 b2
 BDE
@@ -96,6 +97,7 @@ completers
 componentization
 composability
 composable
+ComputationCache
 conceptsTS
 cond
 const
@@ -270,6 +272,7 @@ Jiangang
 jmp
 join's
 JSF
+jthread
 Juhl
 knr
 Koenig97
@@ -320,6 +323,7 @@ Meyers96
 Meyers97
 microbenchmarks
 middleware
+MISRA
 mixin
 mixins
 mnemonizes
@@ -338,6 +342,7 @@ MyMap
 myset
 myX
 n'
+naïvely
 namespace
 namespaces
 Namespaces
@@ -598,6 +603,7 @@ UTF
 util
 v's
 v1
+v17
 v2
 va
 ValueType
@@ -628,6 +634,7 @@ webby
 Webcolor
 webcolors
 WG21
+WorkQueue
 'widen'
 x1
 x2
