@@ -12655,7 +12655,7 @@ In the rare cases where the slicing was deliberate the code can be surprising.
     class Shape { /* ... */ };
     class Circle : public Shape { /* ... */ Point c; int r; };
 
-    Circle c {{0, 0}, 42};
+    Circle c { {0, 0}, 42};
     Shape s {c};    // copy construct only the Shape part of Circle
     s = c;          // or copy assign only the Shape part of Circle
 
@@ -12663,7 +12663,7 @@ In the rare cases where the slicing was deliberate the code can be surprising.
     {
         dest = src;
     }
-    Circle c2 {{1, 1}, 43};
+    Circle c2 { {1, 1}, 43};
     assign(c, c2);   // oops, not the whole state is transferred
     assert(c == c2); // if we supply copying, we should also provide comparison,
                      // but this will likely return false
@@ -15898,7 +15898,7 @@ In lower-level code where intepretation of HResult from system level routines th
 
     void use()
     {
-        Foo bar {{Thing{1}, Thing{2}, Thing{monkey}}, {"my_file", "r"}, "Here we go!"};
+        Foo bar { {Thing{1}, Thing{2}, Thing{monkey} }, {"my_file", "r"}, "Here we go!"};
         // ...
     }
 
